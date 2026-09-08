@@ -2345,6 +2345,21 @@ from app.chatbot import router as chatbot_router
 app.include_router(chatbot_router)
 
 # ============================================================================
+# FARMER MESSAGE ALERT SYSTEM - Import from separate module
+# ============================================================================
+from app.alerts import router as alerts_router, start_background_task as start_alert_service
+app.include_router(alerts_router)
+
+
+@app.on_event("startup")
+async def _start_alert_service_startup():
+    """Start the periodic farmer-alert generator in the background."""
+    try:
+        start_alert_service()
+    except Exception as e:
+        logger.warning(f"Alerts: background task failed to start: {e}")
+
+# ============================================================================
 # MAIN
 # ============================================================================
 

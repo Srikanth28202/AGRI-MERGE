@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage'
 import PredictPage from './pages/PredictPage'
 import ResultsPage from './pages/ResultsPage'
 import ChatPage from './pages/ChatPage'
+import AlertsPage from './pages/AlertsPage'
 import { Loader2, MessageCircle } from 'lucide-react'
 import API from './api'
 
@@ -140,6 +141,7 @@ function AppContent() {
                   }
                 />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/alerts" element={<AlertsPage />} />
                 <Route
                   path="*"
                   element={<HomePage onGetStarted={() => navigate('/predict')} />}

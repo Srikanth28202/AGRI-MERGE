@@ -66,8 +66,9 @@ E:\AGRI MERGE\
 │
 ├── backend\
 │   ├── app\
-│   │   ├── main.py            ← 2276 lines, monolithic FastAPI app (ALL core logic)
-│   │   └── chatbot.py         ← 304 lines (was 281 — env loader added), separate chatbot router (/chat, /chat/status)
+│   │   ├── main.py            ← ~2370 lines, monolithic FastAPI app (ALL core logic)
+│   │   ├── chatbot.py         ← 304 lines (was 281 — env loader added), separate chatbot router (/chat, /chat/status)
+│   │   └── alerts.py          ← NEW ~590 lines — Farmer Message Alert System (standalone router /alerts/*)
 │   ├── config\                ← EMPTY
 │   ├── data\
 │   │   ├── crops\             (crop dataset; model trained from these)
@@ -124,7 +125,7 @@ E:\AGRI MERGE\
 
 ---
 
-## 5. Backend Deep Dive (`backend/app/main.py`, 2276 lines — a monolith)
+## 5. Backend Deep Dive (`backend/app/main.py`, ~2360 lines — a monolith)
 
 ### Endpoints (line numbers current as of last session)
 | Method & Path | Line | Purpose |
@@ -138,6 +139,26 @@ E:\AGRI MERGE\
 | `POST /predict` | 1781 | **main unified endpoint** → `UnifiedPredictionOutput` incl. `price_history` |
 | `POST /chatbot` | 2208 | **legacy/duplicate** chatbot (in main.py) — NOT used by frontend |
 | `GET /chatbot/languages` | 2244 | 10-language list (matches frontend) — legacy |
+
+### Farmer Message Alert System (`app/alerts.py`, standalone router)
+| Method & Path | Purpose |
+|---|---|
+| `GET /alerts/status` | provider, farmer count, supported crops, background-running |
+| `GET /alerts/crops` | crop list + sowing/harvest calendar (25 entries) |
+| `POST /alerts/register` | register/fetch farmer (idempotent by phone) → `{farmer:{id,...}}` |
+| `GET /alerts/farmers` | list all farmers |
+| `GET /alerts/farmers/{id}` | single farmer profile (+ alert/unread counts) |
+| `GET /alerts/farmers/{id}/alerts?unread=` | alert inbox (newest first, 100 max) |
+| `POST /alerts/farmers/{id}/preferences` | update weather/market/farming prefs |
+| `POST /alerts/alerts/{id}/read` / `.../dismiss` | mark read / hide |
+| `POST /alerts/generate` | `{farmer_id?, force?}` — generate + deliver now (demo trigger) |
+| `POST /alerts/send-test` | demo notification to any phone (lang-aware) |
+| `GET /alerts/health` | data-file availability |
+- **Alert types:** weather (live Open-Meteo forecast, no key, with IMD rainfall-normal fallback; thresholds for rain/temp), market (1m/3m WPI moves from `data/prices/*.csv`, drop ≤−5% / rise ≥8%), farming (sow/pre-harvest/harvest calendar reminders).
+- **Delivery:** console provider by default (writes `[ALERT SMS → phone] …` to backend log = demo SMS). Real Twilio SMS if `TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM` set in `backend/.env` (REST via httpx, no SDK). `.env.example` documents them.
+- **Localization:** alerts render in farmer's `language` (en/hi/kn templates, English fallback).
+- **Persistence:** `data/alerts/farmers.json` (auto-created).
+- **Scheduler:** daemon thread `alert-generator` started from `main.py` `@app.on_event("startup")` → first run +20s, then every 6h; dedup per farmer (weather 1d, other 6d); `force=true` bypasses dedup for demos.
 
 ### Chatbot has TWO implementations (confirmed duplication)
 1. `backend/app/chatbot.py` — `router = APIRouter()`; `POST /chat` (132), `GET /chat/status` (230). Uses OpenRouter. **Frontend calls THIS one** (Chatbot.jsx hits `/chat` + `/chat/status`).
@@ -226,8 +247,9 @@ Top-level keys: `recommended_crop`, `confidence`, `predicted_price`, `price_avai
 - ✅ `PriceChart.jsx` (trend + SHAP) & `ProfitCalculator.jsx` wired into `Results.jsx`
 - ✅ Chatbot (OpenRouter + fallback) — hits `/chat`, `/chat/status`
 - ✅ **10-language UI** (en, hi, kn, te, ta, ml, mr, gu, bn, pa) — all locale files complete & valid JSON, all registered
-- ✅ **Multi-page UI (react-router-dom 7)** — `/`, `/predict`, `/results`, `/chat`; results on a dedicated page (form-only Predict page); Navbar active states + integrated theme/language controls
-- ✅ Verified: `/predict` (test_payload.json) → 200 with all fields; `/price-history?crop=paddy` → 200/81 pts; `?crop=zzz` → 404; `npm run build` OK (2742 modules)
+- ✅ **Multi-page UI (react-router-dom 7)** — `/`, `/predict`, `/results`, `/chat`, **`/alerts`**; results on a dedicated page (form-only Predict page); Navbar active states + integrated theme/language controls
+- ✅ **Farmer Message Alert System** (`app/alerts.py` + `/alerts` AlertsPage) — farmer registration (phone/language/state/district/crops/prefs, JSON-persisted), weather alerts (live Open-Meteo + normals fallback), market alerts (WPI moves), farming calendar reminders, console demo SMS + optional Twilio, background generator every 6h, dedup, read/dismiss. `alerts.*` i18n added to **all 10 locales** + navbar link + features card. **Verified:** register→generate→list→read→test-SMS (en+hi+kn) all 200; thread runs; `npm run build` OK.
+- ✅ Verified: `/predict` (test_payload.json) → 200 with all fields; `/price-history?crop=paddy` → 200/81 pts; `?crop=zzz` → 404; `npm run build` OK (2743 modules)
 
 ---
 
@@ -239,6 +261,8 @@ Top-level keys: `recommended_crop`, `confidence`, `predicted_price`, `price_avai
 | **No Docker** | no `Dockerfile` / `docker-compose*` | can't deploy easily |
 | **No CI** | no `.github/workflows` | no quality gate |
 | ~~No react-router~~ | **DONE this session** — routes `/`, `/predict`, `/results`, `/chat` | single-page limitation resolved |
+| ~~Farmer Alert System~~ | **DONE this session** — `app/alerts.py` + `/alerts` page (weather/market/farming, console/Twilio SMS) | objective #6 completed |
+| ~~Live weather API~~ | **PARTIAL** — live Open-Meteo forecast now used in `app/alerts.py` (cached, fallback to normals); NOT yet in `/predict` | weather alerts are real-time; prediction still static |
 | **No `.env*`** | not even `.env.example` | hardcoded key risk, non-portable |
 | **requirements.txt unpinned** | ranges only (`fastapi>=0.91.0`) | not reproducible |
 | **venv not portable / not in .gitignore** | local venv, no pip freeze | needs `pip freeze > requirements.txt` |
@@ -260,9 +284,10 @@ Top-level keys: `recommended_crop`, `confidence`, `predicted_price`, `price_avai
 
 ### 🟠 Tier 2 — Novelty / Differentiators
 4. **RAG chatbot** (chatbot from "LLM wrapper" → grounded retrieval): small vector store (FAISS/ChromaDB) over agronomy knowledge + own `data/`; chat answers cite your dataset. High innovation credit, low cost.
-5. **Live data APIs** — Open-Meteo weather (free, no key) replacing static IMD averages; Agmarknet/API for real mandi prices feeding the price chart. Converts demo from "looks real" → "real-time".
+5. **Live data APIs** — Open-Meteo weather already wired in the **alerts** module (roadmap item partly done); next: route live weather into `/predict` itself, and Agmarknet/API for real mandi prices feeding the price chart. Converts demo from "looks real" → "real-time".
 6. **Stronger price model** — SARIMA or LSTM with seasonal decomposition on extended (2024) data; stationarity tests, ACF/PACF. Classic thesis material.
 7. **Optional wow: crop disease detection** — transfer-learn MobileNet/EfficientNet on PlantVillage; photo-upload demo.
+8. **Deliver alert objective end-to-end** — add real Twilio creds to `.env` for demo SMS; consider SMS gateway batching + an admin "send to all farmers" endpoint (manual `POST /alerts/generate` exists).
 
 ### 🟡 Tier 3 — Engineering Professionalism
 8. **Refactor 2276-line main.py** into `routers/`, `services/`, `models/`, `schemas/`.
@@ -311,6 +336,7 @@ Top-level keys: `recommended_crop`, `confidence`, `predicted_price`, `price_avai
 - SDG narrative elaborated at chat level (§12), not yet written to REPORT.md.
 - Last deliverable: **gap audit** (§10) + prioritized roadmap (§11) — no implementation started from it yet.
 - **This session:** Multi-page UI. Installed `react-router-dom@7.18`; created `src/pages/` (HomePage, PredictPage, ResultsPage, ChatPage); App.jsx is now a BrowserRouter shell; **predict form → `/results` on submit** (form no longer shares the page with results); Navbar rewritten with NavLinks + integrated theme/language controls; Chatbot gained a `fullPage` variant; Footer links converted to routes (docs port fixed 8080→8081). Both servers run (backend 8081, vite 3000). Handbook path corrected to `E:\AGRI MERGE`.
+- **This session (round 2):** Implemented the **Farmer Message Alert System** (objective #6 — previously the single unimplemented objective). Backend: new `app/alerts.py` (self-contained, no main imports) with farmer registry (JSON), weather/market/farming alert builders, console+Twilio providers, 12 `/alerts/*` endpoints, background generator thread wired via `main.py` startup hook. Frontend: new `AlertsPage.jsx` (`/alerts` route, navbar link + features card), full `alerts.*` i18n in all 10 locales. Verified: full backend smoke (register/generate/read/test-sms, en+hi+kn), startup thread alive, `npm run build` OK (2743). Test data cleaned after verification.
 
 ---
 

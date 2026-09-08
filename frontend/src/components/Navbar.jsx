@@ -30,6 +30,7 @@ export default function Navbar({ darkMode, onToggleDark }) {
     { to: '/#features', label: t('navbar.features') },
     { to: '/predict', label: t('navbar.predict') },
     { to: '/chat', label: t('navbar.chat') },
+    { to: '/alerts', label: t('navbar.alerts') },
   ]
 
   return (

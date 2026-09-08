@@ -6,6 +6,7 @@ import {
   TrendingUp, 
   Sun, 
   MessageCircle, 
+  Bell,
   Zap,
   Globe,
   CheckCircle2
@@ -64,6 +65,13 @@ export default function Features() {
       description: t('features.cards.aiChatbot.description'),
       color: 'from-emerald-500 to-green-600',
       bgColor: 'bg-emerald-50 dark:bg-emerald-900/20'
+    },
+    {
+      icon: Bell,
+      title: t('features.cards.farmerAlerts.title'),
+      description: t('features.cards.farmerAlerts.description'),
+      color: 'from-sky-500 to-blue-600',
+      bgColor: 'bg-sky-50 dark:bg-sky-900/20'
     }
   ]
   return (
@@ -119,7 +127,8 @@ export default function Features() {
                                      feature.color.includes('amber') ? '#f59e0b' :
                                      feature.color.includes('cyan') ? '#06b6d4' :
                                      feature.color.includes('yellow') ? '#eab308' :
-                                     feature.color.includes('emerald') ? '#10b981' : '#f43f5e' }} />
+                                     feature.color.includes('emerald') ? '#10b981' :
+                                     feature.color.includes('sky') ? '#0ea5e9' : '#f43f5e' }} />
               </div>
 
               {/* Content */}

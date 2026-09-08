@@ -1,4 +1,4 @@
-﻿{
+{
   "app": {
     "title": "AgriSarathi AI - Smart Crop Intelligence",
     "loading": "Analyzing your farm data...",
@@ -16,7 +16,8 @@
     "getStarted": "Get Started",
     "brand": "Agri",
     "brandHighlight": "Sarathi",
-    "aiPowered": "AI Powered"
+    "aiPowered": "AI Powered",
+    "alerts": "Alerts"
   },
   "hero": {
     "badge": "AI-Powered Agriculture Intelligence",
@@ -50,6 +51,10 @@
       "aiChatbot": {
         "title": "AI Chatbot",
         "description": "24/7 multilingual farming assistant powered by AI for instant guidance."
+      },
+      "farmerAlerts": {
+        "title": "Farmer Alerts",
+        "description": "SMS and in-app notifications for weather, market price changes and timely farming reminders."
       }
     },
     "stats": {
@@ -430,5 +435,67 @@
   },
   "errors": {
     "connectionFailed": "Failed to connect to server. Please check if the backend is running."
+  },
+  "alerts": {
+    "badge": "Farmer Alerts",
+    "title": "Message Alert System",
+    "subtitle": "Get timely SMS and in-app notifications on weather, market prices and farming activities.",
+    "registerCard": {
+      "title": "Register your farm",
+      "subtitle": "Subscribe your phone number to receive instant alerts"
+    },
+    "name": "Farmer name",
+    "namePlaceholder": "e.g. Ramesh Kumar",
+    "phone": "Phone number",
+    "phonePlaceholder": "+91 98765 43210",
+    "language": "Alert language",
+    "selectLanguage": "Choose language",
+    "state": "State",
+    "selectState": "Select state",
+    "district": "District",
+    "selectDistrict": "Select district",
+    "stateFirst": "Select state first",
+    "crops": "Select crops",
+    "cropsHint": "We'll send alerts about these crops",
+    "prefs": "Alert preferences",
+    "prefWeather": "Weather updates",
+    "prefMarket": "Market information",
+    "prefFarming": "Farming activities",
+    "registerBtn": "Register for alerts",
+    "registering": "Registering...",
+    "subscription": "My subscription",
+    "edit": "Change",
+    "generateBtn": "Generate alerts now",
+    "generating": "Generating...",
+    "testSmsBtn": "Send test SMS",
+    "sending": "Sending...",
+    "inboxTitle": "Your alerts",
+    "inboxEmpty": "No alerts yet. Press 'Generate alerts now' to run a live demo.",
+    "inboxRegisterHint": "Register above to start receiving weather, market and farming alerts on your phone.",
+    "markRead": "Mark as read",
+    "severity": {
+      "warning": "Alert"
+    },
+    "statusCard": {
+      "title": "System status",
+      "provider": "SMS provider",
+      "farmers": "Farmers",
+      "crops": "Crops",
+      "interval": "Check every"
+    },
+    "timeAgo": {
+      "now": "just now",
+      "min": "m ago",
+      "hr": "h ago",
+      "day": "d ago"
+    },
+    "toast": {
+      "registered": "Registration successful! You'll receive alerts on this phone.",
+      "generated": "New alerts generated and delivered to your inbox.",
+      "testSent": "Test SMS delivered — check the backend log (console provider).",
+      "error": "Something went wrong. Please try again.",
+      "fillForm": "Please fill name, phone, state and district.",
+      "registerFirst": "Please register your farm first."
+    }
   }
 }
