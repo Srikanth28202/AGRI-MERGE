@@ -24,9 +24,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.tree import DecisionTreeRegressor
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import httpx  # For Ollama API calls
 # requests removed - no external API dependency
 
@@ -162,6 +162,37 @@ CROP_WPI_PROXY = {
 
 # Annual rainfall by month (from price model)
 ANNUAL_RAINFALL = [29, 21, 37.5, 30.7, 52.6, 150, 299, 251.7, 179.2, 70.5, 39.8, 10.9]
+
+MONTH_ABBR = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+
+def get_monthly_rainfall(month: int) -> float:
+    """
+    Return the annual-average rainfall (mm) for a 1-based month number.
+
+    Raises ValueError for anything outside 1-12 so callers never index the
+    list out of range or silently wrap around with a negative index
+    (ANNUAL_RAINFALL[0] used to return December's rainfall).
+    """
+    if not isinstance(month, int) or isinstance(month, bool):
+        raise ValueError(f"Month must be an integer 1-12, got {month!r}.")
+    if not 1 <= month <= 12:
+        raise ValueError(f"Month must be between 1 and 12, got {month}.")
+    return ANNUAL_RAINFALL[month - 1]
+
+
+def month_abbr_to_num(month: str) -> int:
+    """
+    Convert a 3-letter month abbreviation (e.g. 'MAY') to a 1-based month
+    number, raising a clear error instead of ValueError from list.index().
+    """
+    key = (month or "").strip().upper()
+    if key not in MONTH_ABBR:
+        raise ValueError(
+            f"Invalid month '{month}'. Expected one of: {', '.join(MONTH_ABBR)}."
+        )
+    return MONTH_ABBR.index(key) + 1
 
 # ============================================================================
 # ============================================================================
@@ -919,7 +950,7 @@ class Commodity:
             end_month = cur_month if year == cur_year else 12
             for month in range(1, end_month + 1):
                 try:
-                    rainfall = ANNUAL_RAINFALL[month - 1]
+                    rainfall = get_monthly_rainfall(month)
                     pred = float(self.regressor.predict([[month, year, rainfall]])[0])
                     history.append({
                         "month": month,
@@ -933,7 +964,7 @@ class Commodity:
         # AI forecast for the remaining months of the current year
         for month in range(cur_month + 1, 13):
             try:
-                rainfall = ANNUAL_RAINFALL[month - 1]
+                rainfall = get_monthly_rainfall(month)
                 pred = float(self.regressor.predict([[month, cur_year, rainfall]])[0])
                 history.append({
                     "month": month,
@@ -1046,7 +1077,12 @@ class ModelManager:
                 self.crop_model.eval()
                 logger.info("Loaded crop prediction model")
             else:
-                logger.warning("Crop model not found, using rule-based prediction")
+                logger.warning(
+                    "Crop ML weights not found at %s - falling back to rule-based "
+                    "crop prediction. Copy the trained weights there to enable the "
+                    "neural model (see README).",
+                    crop_model_path,
+                )
                 self.crop_model = None
             
             # Load encoder
@@ -1587,7 +1623,38 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# Force UTF-8 charset for JSON responses so emojis don't render as mojibake
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+
+class Utf8JsonMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            async def send_utf8(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    content_type = None
+                    for k, v in headers:
+                        if k.lower() == b"content-type":
+                            content_type = v
+                            break
+                    if content_type and content_type.startswith(b"application/json") and b"charset" not in content_type:
+                        headers = [
+                            (k, v) for k, v in headers if k.lower() != b"content-type"
+                        ]
+                        headers.append((b"content-type", b"application/json; charset=utf-8"))
+                        message["headers"] = headers
+                await send(message)
+
+            await self.app(scope, receive, send_utf8)
+            return
+        await self.app(scope, receive, send)
+
+
+# CORS middleware (must come before custom middleware so CORS headers remain intact)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:3001"],
@@ -1596,6 +1663,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Added last => runs first, outermost; keeps CORS headers intact because it
+# only rewrites content-type and passes every other header/message through.
+app.add_middleware(Utf8JsonMiddleware)
 
 # Request/Response Models
 class CropPredictionInput(BaseModel):
@@ -1607,6 +1677,14 @@ class CropPredictionInput(BaseModel):
     district: str = Field(..., description="District name (e.g., 'BANGALORE')")
     month: str = Field(..., description="3-letter month (e.g., 'JAN', 'FEB')")
 
+    @field_validator("month")
+    @classmethod
+    def _check_month(cls, v: str) -> str:
+        # Normalise casing/whitespace and reject unknown months up front so
+        # downstream list lookups can never fail on bad input.
+        month_abbr_to_num(v)
+        return v.strip().upper()
+
 
 class UnifiedPredictionInput(BaseModel):
     nitrogen: float = Field(..., ge=0, le=200, description="Nitrogen content in soil (mg/kg)")
@@ -1617,6 +1695,12 @@ class UnifiedPredictionInput(BaseModel):
     district: str = Field(..., description="District name")
     month: str = Field(..., description="3-letter month (e.g., 'JAN')")
     year: int = Field(default_factory=lambda: datetime.now().year, description="Year for price prediction")
+
+    @field_validator("month")
+    @classmethod
+    def _check_month(cls, v: str) -> str:
+        month_abbr_to_num(v)
+        return v.strip().upper()
 
 
 class UnifiedPredictionOutput(BaseModel):
@@ -1639,20 +1723,22 @@ class UnifiedPredictionOutput(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint - AgriSarathi AI"""
+    ml_loaded = model_manager.crop_model is not None
     return {
         "name": "AgriSarathi AI",
         "tagline": "Smart Crop Recommendation & Price Forecasting",
         "message": "Unified Crop Recommendation & Price Prediction API",
         "version": "2.0.0",
+        "prediction_mode": "ml" if ml_loaded else "rule-based",
         "features": [
-            "41-crop prediction model",
+            f"{'41-crop ML' if ml_loaded else '33-crop rule-based'} prediction",
             "Price forecasting for all crops",
             "Top 5 crop recommendations",
-            "Crop comparison & ranking"
+            "Crop comparison & ranking",
         ],
-        "crop_model_loaded": model_manager.crop_model is not None,
+        "crop_model_loaded": ml_loaded,
         "price_models_loaded": len(model_manager.commodities),
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -1776,7 +1862,12 @@ async def predict_crop_only(input_data: CropPredictionInput):
 
 
 @app.post("/predict-price")
-async def predict_price_only(crop: str, month: int, year: int, rainfall: Optional[float] = None):
+async def predict_price_only(
+    crop: str,
+    month: int = Query(..., ge=1, le=12, description="Month number, 1-12"),
+    year: int = Query(..., ge=1900, le=2200, description="Calendar year"),
+    rainfall: Optional[float] = Query(None, description="Rainfall in mm; defaults to the annual average for the month"),
+):
     """
     Predict price for a specific crop.
     If rainfall is not provided, uses annual average.
@@ -1784,10 +1875,10 @@ async def predict_price_only(crop: str, month: int, year: int, rainfall: Optiona
     try:
         # Map crop name if needed
         mapped_crop = CROP_TO_PRICE_MAPPING.get(crop.lower(), crop.lower())
-        
+
         # Use annual rainfall if not provided
         if rainfall is None:
-            rainfall = ANNUAL_RAINFALL[month - 1]
+            rainfall = get_monthly_rainfall(month)
         
         price_result = model_manager.predict_price(mapped_crop, month, year, rainfall)
         
@@ -1812,9 +1903,12 @@ async def predict_price_only(crop: str, month: int, year: int, rainfall: Optiona
             "price_method": method
         }
         
-    except Exception as e:
-        logger.error(f"Price prediction error: {e}")
+    except ValueError as e:
+        logger.warning(f"Invalid price prediction input: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Price prediction error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Price prediction failed due to an internal error.")
 
 
 @app.get("/price-history")
@@ -1877,12 +1971,11 @@ async def unified_predict(input_data: UnifiedPredictionInput):
         # Step 4: Predict price for ALL crops (now using proxy models)
         predicted_price = None
         price_method = None
-        month_num = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
-                     "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"].index(input_data.month.upper()) + 1
-        
+        month_num = month_abbr_to_num(input_data.month)
+
         # Predict price for the recommended crop (now ALL 22 crops have price support!)
         logger.info(f"Predicting price for {crop}")
-        price_rainfall = ANNUAL_RAINFALL[month_num - 1]
+        price_rainfall = get_monthly_rainfall(month_num)
         price_result = model_manager.predict_price(
             crop, month_num, input_data.year, price_rainfall
         )
@@ -2077,7 +2170,7 @@ async def unified_predict(input_data: UnifiedPredictionInput):
                 "price_calculation": {
                     "base_price": BASE_PRICES.get(crop.capitalize(), None),
                     "month_used": month_num,
-                    "annual_rainfall_used": ANNUAL_RAINFALL[month_num - 1],
+                    "annual_rainfall_used": get_monthly_rainfall(month_num),
                     "price_method": price_method,
                     "is_proxy": price_method and price_method.startswith("proxy") if price_method else False
                 } if predicted_price else None,
@@ -2092,9 +2185,12 @@ async def unified_predict(input_data: UnifiedPredictionInput):
         
         return response
         
-    except Exception as e:
-        logger.error(f"Unified prediction error: {e}")
+    except ValueError as e:
+        logger.warning(f"Invalid prediction input: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unified prediction error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Prediction failed due to an internal error.")
 
 
 # ============================================================================

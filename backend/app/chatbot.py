@@ -39,12 +39,12 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _ENV = _load_env_file(os.path.join(_BACKEND_DIR, ".env"))
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", _ENV.get("OPENROUTER_API_KEY", ""))
-OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", _ENV.get("OPENROUTER_MODEL", "nousresearch/hermes-3-llama-3.1-405b:free"))
+DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.8-27b:free"
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", _ENV.get("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL))
 
-# Alternative free models:
-# - "mistralai/mistral-7b-instruct:free" (may be unavailable)
-# - "meta-llama/llama-3-8b-instruct:free"
-# - "google/gemma-7b-it:free"
+# Any id from https://openrouter.ai/models can be used via OPENROUTER_MODEL.
+# The older ':free' Llama/Mistral ids have been retired upstream and now
+# return a model-not-found error.
 
 # ============================================================================
 # Pydantic Models
@@ -156,12 +156,12 @@ class MultilingualChatbot:
 async def chat_endpoint(request: ChatRequest):
     """
     AI Chatbot endpoint using OpenRouter (Cloud API - FREE tier)
-    
-    FREE MODELS AVAILABLE:
-    - mistralai/mistral-7b-instruct:free
-    - meta-llama/llama-3-8b-instruct:free
-    - nousresearch/hermes-3-llama-3.1-405b:free
-    
+
+    Any model id from https://openrouter.ai/models works; the default is
+    set to a current free-tier model (the older ':free' Llama/Mistral ids
+    have since been retired and now return a model-not-found error).
+    Override it with the OPENROUTER_MODEL environment variable.
+
     To get API key:
     1. Go to https://openrouter.ai/keys
     2. Create free account
