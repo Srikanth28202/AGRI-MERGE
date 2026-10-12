@@ -508,19 +508,19 @@ export default function AlertsPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                   <div>
                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">{status.farmers_registered}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusFarmers')}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusCard.farmers')}</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{status.supported_crops.length}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusCrops')}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusCard.crops')}</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-neutral-700 dark:text-neutral-200 truncate">{status.provider}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusProvider')}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusCard.provider')}</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-neutral-700 dark:text-neutral-200">{status.generation_interval_hours}h</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusInterval')}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('alerts.statusCard.interval')}</div>
                   </div>
                 </div>
               ) : (

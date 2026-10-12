@@ -10,8 +10,9 @@ Delivers timely SMS/in-app notifications on:
   3. Farming activities   - crop calendar reminders (sowing / harvest).
 
 Persistence: farmer registry stored as JSON in data/alerts/farmers.json.
-Delivery   : console provider (demo) by default; real Twilio SMS when
-             TWILIO_* variables are present in backend/.env.
+Delivery   : console provider (demo) by default; real WhatsApp via the free
+             CallMeBot API when CALLMEBOT_* variables are present, or Twilio
+             SMS when TWILIO_* variables are present in backend/.env.
 Localization: alerts are generated in the farmer's registered language
              (en / hi / kn supported, English fallback).
 """
@@ -66,6 +67,15 @@ _ENV = _load_env_file(os.path.join(BASE_DIR, ".env"))
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", _ENV.get("TWILIO_ACCOUNT_SID", ""))
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", _ENV.get("TWILIO_AUTH_TOKEN", ""))
 TWILIO_FROM = os.environ.get("TWILIO_FROM", _ENV.get("TWILIO_FROM", ""))
+
+# CallMeBot free WhatsApp API (personal use — delivers only to the number that
+# activated the API key). Set both to enable the WhatsAppProvider.
+CALLMEBOT_PHONE = os.environ.get("CALLMEBOT_PHONE", _ENV.get("CALLMEBOT_PHONE", ""))
+CALLMEBOT_API_KEY = os.environ.get("CALLMEBOT_API_KEY", _ENV.get("CALLMEBOT_API_KEY", ""))
+
+# Fast2SMS "Quick SMS" route (India, no DLT registration needed — free test
+# credits on signup). Get the key from the Dev API section of fast2sms.com.
+FAST2SMS_API_KEY = os.environ.get("FAST2SMS_API_KEY", _ENV.get("FAST2SMS_API_KEY", ""))
 
 # ============================================================================
 # Alert thresholds
@@ -632,12 +642,31 @@ engine = AlertEngine()
 
 
 # ============================================================================
-# Notification providers (console demo + optional Twilio SMS)
+# Notification providers (console demo + optional Twilio SMS + CallMeBot WhatsApp)
 # ============================================================================
+
+def _norm_phone(phone: str) -> str:
+    """Strip spaces/dashes so '+91 98765 43210' becomes '+919876543210'.
+
+    Keeps a single leading '+' for international numbers; drops it otherwise.
+    """
+    p = (phone or "").strip()
+    has_plus = p.startswith("+")
+    digits = "".join(ch for ch in p if ch.isdigit())
+    if not digits:
+        return ""
+    return ("+" + digits) if has_plus else digits
+
+
+def _india_10(phone: str) -> str:
+    """Return the 10-digit Indian mobile part Fast2SMS expects."""
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    return digits[-10:] if len(digits) >= 10 else digits
+
 
 class ConsoleProvider:
     name = "console"
-    description = "Demo SMS — messages are written to the backend log. Set TWILIO_* in backend/.env for real SMS."
+    description = "Demo SMS — messages are written to the backend log. Set FAST2SMS_API_KEY (SMS), CALLMEBOT_* (WhatsApp) or TWILIO_* in backend/.env for real delivery."
 
     def send(self, phone: str, message: str) -> bool:
         logger.info(f"[ALERT SMS → {phone}] {message}")
@@ -667,14 +696,71 @@ class TwilioProvider:
             return False
 
 
+class WhatsAppProvider:
+    name = "callmebot"
+    description = "WhatsApp via the free CallMeBot API (personal use; only delivers to the number that activated the API key)."
+
+    def send(self, phone: str, message: str) -> bool:
+        if not (CALLMEBOT_PHONE and CALLMEBOT_API_KEY):
+            logger.warning("CallMeBot provider selected but credentials missing — falling back to log.")
+            return False
+        dest = _norm_phone(phone or CALLMEBOT_PHONE)
+        if not dest:
+            return False
+        try:
+            resp = httpx.get(
+                "https://api.callmebot.com/whatsapp.php",
+                params={"phone": dest, "text": message, "apikey": CALLMEBOT_API_KEY},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Alerts: CallMeBot send failed to {dest}: {e}")
+            return False
+
+
+class Fast2SMSProvider:
+    name = "fast2sms"
+    description = "Real SMS via Fast2SMS 'Quick SMS' route (India, no DLT registration needed)."
+
+    def send(self, phone: str, message: str) -> bool:
+        if not FAST2SMS_API_KEY:
+            logger.warning("Fast2SMS provider selected but FAST2SMS_API_KEY missing — falling back to log.")
+            return False
+        number = _india_10(phone)
+        if len(number) != 10:
+            logger.error(f"Alerts: Fast2SMS needs a 10-digit Indian number, got '{phone}'.")
+            return False
+        try:
+            resp = httpx.post(
+                "https://www.fast2sms.com/dev/bulkV2",
+                headers={"authorization": FAST2SMS_API_KEY, "Content-Type": "application/json"},
+                json={"route": "q", "message": message, "numbers": number, "language": "english"},
+                timeout=15,
+            )
+            body = resp.json()
+            ok = resp.status_code == 200 and bool(body.get("return"))
+            if not ok:
+                logger.error(f"Alerts: Fast2SMS rejected send to {number}: {resp.status_code} {body}")
+            return ok
+        except Exception as e:
+            logger.error(f"Alerts: Fast2SMS send failed to {number}: {e}")
+            return False
+
+
 def provider():
+    if CALLMEBOT_PHONE and CALLMEBOT_API_KEY:
+        return WhatsAppProvider()
+    if FAST2SMS_API_KEY:
+        return Fast2SMSProvider()
     if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM:
         return TwilioProvider()
     return ConsoleProvider()
 
 
 def _send_notification(farmer: dict, alert: dict) -> bool:
-    phone = farmer.get("phone", "")
+    phone = _norm_phone(farmer.get("phone", ""))
     if not phone:
         return False
     body = f"[{alert['title']}] {alert['message']}"
@@ -892,10 +978,10 @@ async def generate_alerts(payload: GenerateRequest):
 
 @router.post("/alerts/send-test")
 async def send_test_alert(payload: TestSendRequest):
-    """Send a demo notification to any phone number (console log or Twilio)."""
+    """Send a demo notification to any phone number (console log, CallMeBot or Twilio)."""
     msg = _tr(MESSAGES["test"], payload.language)
-    ok = provider().send(payload.phone, f"[Test] {msg}")
-    return {"delivered": ok, "delivery_mode": provider().name, "phone": payload.phone, "message": msg}
+    ok = provider().send(_norm_phone(payload.phone), f"[Test] {msg}")
+    return {"delivered": ok, "delivery_mode": provider().name, "phone": _norm_phone(payload.phone), "message": msg}
 
 
 @router.get("/alerts/health")
