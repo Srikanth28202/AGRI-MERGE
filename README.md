@@ -1,165 +1,182 @@
-# AgriSarathi - AI-Powered Crop Intelligence Platform
+# AgriSarathi AI — AI-Powered Crop Intelligence Platform
 
-A unified crop recommendation and price prediction system with a modern React frontend and FastAPI backend.
+AgriSarathi AI is a web platform that helps Indian farmers make smarter decisions — **which crop to grow, what price to expect, how to guide it to harvest, and when to act** — using machine learning, live weather and market data.
+
+Built with a **React (Vite) front-end** and a **FastAPI (PyTorch) back-end**, it ships a trained neural crop model, price forecasting, an AI farming chatbot, and a real messaging/alert system over Telegram.
+
+---
+
+## ✨ Features
+
+- 🌱 **Crop Recommendation** — trained PyTorch neural network (`Net_64_128_64`) classifies the best crop among **41 crops** from soil (N-P-K, pH) + location + season, with a rule-based fallback.
+- 💰 **Price Prediction** — per-commodity `DecisionTreeRegressor` models forecast WPI-based prices in ₹/quintal (23 commodities), plus live latest-WPI updates.
+- 📈 **Growth Guidance** — week-by-week planting → harvest advice with environmental data.
+- 🧠 **Explainable AI** — dependency-free SHAP-style explanations of why a crop was recommended.
+- 🤖 **AI Chatbot** — OpenRouter cloud LLM with an agriculture system prompt, plus a multilingual rule-based fallback.
+- 📲 **Alerts & Messaging** — background alert engine (every 6h) delivers **weather, market (WPI) and farming-calendar** alerts to farmers via **Telegram** (free, reliable), with CallMeBot WhatsApp / Fast2SMS / Twilio as alternates.
+- 🌍 **Multilingual** — full UI + chatbot in **10 languages** (English, Hindi, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Bengali, Punjabi).
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8+
-- Node.js 18+
-- npm or yarn
+- **Python 3.10+** and Node.js **18+**
+- Python packages installed in a virtual environment (`pip install -r requirements.txt`)
 
-### Backend Setup
-
+### 1) Backend
 ```bash
 cd backend
+python -m venv venv                 # already done in this repo
+venv\Scripts\activate
 pip install -r requirements.txt
 
-# Set your OpenRouter API key for AI chatbot (optional)
-$env:OPENROUTER_API_KEY="your-api-key"
+# Optional: copy env template and add your keys
+copy .env.example .env
 
-# Run the server
-python app/main.py
+# Run the API server
+python -m uvicorn app.main:app --port 8081
 ```
+Backend starts at **http://localhost:8081** — interactive API docs at **http://localhost:8081/docs**.
 
-Backend will start on `http://localhost:8081`
-
-**Note:** The backend uses rule-based crop prediction as a fallback when ML model files are not present. Price prediction works with the CSV data files in `backend/data/prices/`.
-
-### Frontend Setup
-
+### 2) Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Frontend starts at **http://localhost:3000**. The Vite dev server proxies `/api/*` → `http://127.0.0.1:8081` (strips the `/api` prefix), so the UI works out of the box.
 
-Frontend will start on `http://localhost:3000` (or next available port if 3000 is busy)
+---
+
+## 🔐 Environment Variables (`backend/.env`)
+
+| Variable | Purpose | Required |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Powers the AI chatbot (free key from openrouter.ai/keys) | for AI chat |
+| `OPENROUTER_MODEL` | Chat model id (default: a current free-tier model) | optional |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Real alert delivery via Telegram bot (create with @BotFather) | for alerts |
+| `CALLMEBOT_PHONE` / `CALLMEBOT_API_KEY` | WhatsApp via CallMeBot | optional |
+| `FAST2SMS_API_KEY` | SMS via Fast2SMS | optional |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | SMS via Twilio | optional |
+
+Provider priority: **Telegram → CallMeBot → Fast2SMS → Twilio → console log**. With no keys set, the app runs fully except real delivery (alerts are written to the backend log).
+
+> The chatbot degrades gracefully: without a key (or on API errors) it uses the built-in multilingual rule-based fallback instead of crashing.
+
+---
 
 ## 📁 Project Structure
 
 ```
 AGRI MERGE/
-├── backend/                 # FastAPI Backend
+├── backend/
 │   ├── app/
-│   │   └── main.py         # Main API application
+│   │   ├── main.py           # FastAPI app: crop/price/growth/explainability APIs
+│   │   ├── chatbot.py        # AI chatbot (OpenRouter) + rule-based fallback
+│   │   └── alerts.py         # Alert engine + Telegram/Fast2SMS/CallMeBot/Twilio providers
 │   ├── data/
-│   │   ├── rainfall/       # Rainfall data
-│   │   ├── prices/         # Crop price CSV files
-│   │   └── crops/          # Crop recommendation data
-│   ├── models/             # ML model files
-│   │   └── crop/
-│   │       └── net.py      # Neural network definition
-│   ├── services/           # Business logic
-│   ├── config/             # Configuration files
-│   └── requirements.txt    # Python dependencies
+│   │   ├── rainfall/         # District rainfall normals (IMD)
+│   │   ├── prices/           # WPI commodity price CSVs
+│   │   └── crops/            # Training dataset (crop_recommendation.csv, 41 crops)
+│   ├── models/crop/          # Trained artifacts: state_dict (.hdf5), encoder, normalization
+│   ├── train_crop_model.py   # Crop NN trainer (Net_64_128_64; ~90% val. accuracy)
+│   ├── send_test.py          # One-off alert delivery tester
+│   ├── requirements.txt
+│   ├── .env / .env.example
+│   └── test_payload.json     # Sample /predict request
 │
-├── frontend/               # React + Vite Frontend
+├── frontend/                 # React + Vite
 │   ├── src/
-│   │   ├── components/     # React components
-│   │   │   ├── Chatbot.jsx
-│   │   │   ├── Features.jsx
-│   │   │   ├── Footer.jsx
-│   │   │   ├── Hero.jsx
-│   │   │   ├── Navbar.jsx
-│   │   │   ├── PredictionForm.jsx
-│   │   │   └── Results.jsx
-│   │   ├── App.jsx
-│   │   ├── main.jsx
+│   │   ├── pages/            # Home, Prediction, Chatbot, Alerts pages
+│   │   ├── components/       # Hero, Navbar, PredictionForm, Results, ...
+│   │   ├── locales/          # i18next translations (10 languages)
+│   │   ├── App.jsx / main.jsx
 │   │   └── index.css
 │   ├── package.json
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── index.html
+│   └── vite.config.js        # Dev server + /api proxy to :8081
 │
+├── REPORT.md                 # Project report (objectives, tech stack, SDGs)
 └── README.md
 ```
 
-## 🔧 Features
+---
 
-- **Crop Recommendation**: AI-powered crop suggestions based on soil parameters, location, and climate
-- **Price Prediction**: Forecast crop prices using historical data
-- **AI Chatbot**: Multilingual farming assistant (11 Indian languages)
-- **XAI Explanations**: Understand why specific crops are recommended
-- **Modern UI**: Responsive design with dark mode support
+## 🔁 How the Alert System Works
 
-## 🛠️ Tech Stack
+1. On startup a background thread runs every **6 hours**.
+2. For every **registered farmer** it checks three triggers:
+   - **Weather** — live Open-Meteo forecast (rain/temperature risk) for their district
+   - **Market** — WPI price move for their crops
+   - **Farming** — crop-calendar reminders (sowing / harvest windows)
+3. Alerts are **deduplicated** per type (`dedup_key`) so none are repeated every cycle.
+4. Each alert is delivered to the configured channel (Telegram by default) and stored in the farmer's inbox.
 
-**Backend:**
-- FastAPI
-- PyTorch (Neural Network)
-- scikit-learn (Price Prediction)
-- Pandas & NumPy
+Register a farmer and trigger a run:
+```bash
+curl -X POST http://localhost:8081/alerts/register \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"Nisha\",\"phone\":\"+91 90000 00000\",\"state\":\"KARNATAKA\",\"district\":\"BANGALORE RUR\",\"crops\":[\"paddy\"]}"
 
-**Frontend:**
-- React 18
-- Vite
-- Tailwind CSS
-- Framer Motion
-- Axios
-
-## 📚 API Endpoints
-
-- `GET /` - API info
-- `GET /locations` - Get states and districts
-- `POST /predict` - Get crop recommendation and price prediction
-- `POST /chatbot` - AI chatbot endpoint
-
-## 🔐 Environment Variables
-
-Backend (optional):
-- `OPENROUTER_API_KEY` - For AI chatbot features
-
-## 📝 License
-
-MIT License - See LICENSE file for details
-
-## 🙏 Acknowledgments
-
-- Crop recommendation model trained on Indian agricultural data
-- Price prediction using historical commodity prices
-- Climate data from Indian meteorological sources
+curl -X POST http://localhost:8081/alerts/generate -H "Content-Type: application/json" -d "{\"force\":true}"
+```
 
 ---
 
-## 🔧 System Status & Fixes Applied
+## 📚 API Endpoints
 
-### Issues Found and Fixed:
+**Core**
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | API info |
+| GET | `/locations` | Supported states & districts |
+| GET | `/supported-crops` | Crops the model can predict |
+| POST | `/predict` | Unified crop recommendation + price + growth advice (N, P, K, pH, state, district, month) |
+| POST | `/predict-crop` | Crop prediction only |
+| POST | `/predict-price` | WPI price forecast for a commodity |
+| GET | `/price-history` | Historical price series |
+| POST | `/chat` | AI chatbot message |
+| GET | `/chat/status` | Chatbot mode (ai / fallback) + model |
 
-1. **Backend Model Loading Error**
-   - **Issue:** `NameError: name 'CROP_MODEL_PATH' is not defined`
-   - **Fix:** Made ML model loading optional with try/except, added rule-based fallback for crop prediction when model files are missing
+**Alerts**
+| Method | Path | Description |
+|---|---|---|
+| GET | `/alerts/status` | System status (active provider, farmers, crops) |
+| POST | `/alerts/register` | Register a farmer for alerts |
+| GET | `/alerts/farmers` | List registered farmers |
+| POST | `/alerts/generate` | Generate + deliver alerts (all farmers or one) |
+| POST | `/alerts/send-test` | Send a test message via the active provider |
+| GET | `/alerts/health` / `/alerts/crops` | Health + crop-calendar info |
 
-2. **Missing crop_encoder References**
-   - **Issue:** Multiple endpoints (`/supported-crops`, `/predict-crop`, `/predict`) failed when `crop_encoder` was None
-   - **Fix:** Added null checks and fallback crop lists for all endpoints
+Full interactive list: **http://localhost:8081/docs**.
 
-3. **Frontend-Backend Data Mismatch**
-   - **Issue:** Frontend expected `details.environmental_data.temperature` but backend returned `temperature_celsius`
-   - **Fix:** Updated frontend Results.jsx to use correct field names (`temperature_celsius`, `humidity_percent`, `rainfall_mm`)
+---
 
-4. **Frontend Response Structure**
-   - **Issue:** Frontend expected nested `details.xai_explanation` but backend returned flat fields
-   - **Fix:** Updated frontend to match backend response structure (explanation, soil_analysis, growth_advice at top level)
+## 🛠️ Tech Stack
 
-5. **Price Display in Top 5**
-   - **Issue:** Frontend used `crop.price` but backend returns `crop.predicted_price`
-   - **Fix:** Updated Results.jsx to use correct field name
+**Backend**
+- FastAPI + Uvicorn + Pydantic
+- PyTorch (crop neural network)
+- scikit-learn (DecisionTreeRegressor price models)
+- Pandas, NumPy
+- httpx (OpenRouter, Telegram, weather, SMS APIs)
 
-### Current System State:
+**Frontend**
+- React 18 + Vite 5
+- Tailwind CSS, Framer Motion
+- Recharts (price charts)
+- react-i18next (10 languages)
+- Axios
 
-- **Backend:** ✅ Runs without errors, uses rule-based crop prediction (ML models optional), price prediction works with CSV data
-- **Frontend:** ✅ API calls fixed, JSON structure aligned, error handling in place
-- **Integration:** ✅ Ready for end-to-end testing
+---
 
-### Files Modified:
+## 📝 License
 
-**Backend:**
-- `backend/app/main.py` - Added fallback for missing ML models, fixed all crop_encoder references
+MIT License — see the `LICENSE` file for details.
 
-**Frontend:**
-- `frontend/src/components/Results.jsx` - Fixed field names, response structure alignment
+## 🙏 Acknowledgments
 
-**Cleanup:**
-- Removed: `backend.log`, `backend_err.log`, `backend_out.log`, `backend_run.log`, `dev_output.txt`, `frontend.log`, `start_server.bat`
-- Removed: `crop-prediction/` folder, `CLEANUP_ANALYSIS.md`, `PROJECT_SUMMARY.md`, `QUICK_START.md`, `README_UNIFIED.md`
+- Crop dataset (UCI crop recommendation, 4,100 samples / 41 labels)
+- WPI commodity prices (Ministry of Consumer Affairs / OGD)
+- Rainfall normals from IMD data
+- Open-Meteo (keyless weather forecasts) & OpenRouter (free LLM access)
