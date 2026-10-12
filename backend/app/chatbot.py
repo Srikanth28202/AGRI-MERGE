@@ -39,7 +39,7 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _ENV = _load_env_file(os.path.join(_BACKEND_DIR, ".env"))
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", _ENV.get("OPENROUTER_API_KEY", ""))
-DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.8-27b:free"
+DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", _ENV.get("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL))
 
 # Any id from https://openrouter.ai/models can be used via OPENROUTER_MODEL.
@@ -208,8 +208,15 @@ async def chat_endpoint(request: ChatRequest):
             
             if response.status_code == 200:
                 result = response.json()
-                ai_response = result["choices"][0]["message"]["content"].strip()
-                
+                message = result["choices"][0]["message"]
+                # Most instruct models return "content"; reasoning models may
+                # return null content with the text in "reasoning".
+                ai_response = (message.get("content") or "").strip()
+                if not ai_response:
+                    ai_response = (message.get("reasoning") or "").strip()
+                if not ai_response:
+                    raise ValueError("Empty response content from model")
+
                 return ChatResponse(
                     response=ai_response,
                     success=True,
