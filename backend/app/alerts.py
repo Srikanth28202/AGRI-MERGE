@@ -77,6 +77,12 @@ CALLMEBOT_API_KEY = os.environ.get("CALLMEBOT_API_KEY", _ENV.get("CALLMEBOT_API_
 # credits on signup). Get the key from the Dev API section of fast2sms.com.
 FAST2SMS_API_KEY = os.environ.get("FAST2SMS_API_KEY", _ENV.get("FAST2SMS_API_KEY", ""))
 
+# Telegram Bot API (free, reliable, global). Create a bot via @BotFather to get
+# TELEGRAM_BOT_TOKEN, then put the destination chat id in TELEGRAM_CHAT_ID
+# (message your bot once, then read the id from getUpdates).
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", _ENV.get("TELEGRAM_BOT_TOKEN", ""))
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", _ENV.get("TELEGRAM_CHAT_ID", ""))
+
 # ============================================================================
 # Alert thresholds
 # ============================================================================
@@ -666,7 +672,7 @@ def _india_10(phone: str) -> str:
 
 class ConsoleProvider:
     name = "console"
-    description = "Demo SMS — messages are written to the backend log. Set FAST2SMS_API_KEY (SMS), CALLMEBOT_* (WhatsApp) or TWILIO_* in backend/.env for real delivery."
+    description = "Demo SMS — messages are written to the backend log. Set TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID (Telegram), FAST2SMS_API_KEY (SMS), CALLMEBOT_* (WhatsApp) or TWILIO_* in backend/.env for real delivery."
 
     def send(self, phone: str, message: str) -> bool:
         logger.info(f"[ALERT SMS → {phone}] {message}")
@@ -749,7 +755,40 @@ class Fast2SMSProvider:
             return False
 
 
+class TelegramProvider:
+    name = "telegram"
+    description = "Real messages via the Telegram Bot API (free). Set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID."
+
+    # Telegram delivers to a chat id, not a phone number.
+    requires_phone = False
+
+    def send(self, phone: str, message: str) -> bool:
+        if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
+            logger.warning("Telegram provider selected but credentials missing — falling back to log.")
+            return False
+        try:
+            resp = httpx.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "text": message,
+                    "disable_web_page_preview": True,
+                },
+                timeout=15,
+            )
+            body = resp.json()
+            ok = resp.status_code == 200 and bool(body.get("ok"))
+            if not ok:
+                logger.error(f"Alerts: Telegram rejected send: {resp.status_code} {body}")
+            return ok
+        except Exception as e:
+            logger.error(f"Alerts: Telegram send failed: {e}")
+            return False
+
+
 def provider():
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+        return TelegramProvider()
     if CALLMEBOT_PHONE and CALLMEBOT_API_KEY:
         return WhatsAppProvider()
     if FAST2SMS_API_KEY:
@@ -760,12 +799,13 @@ def provider():
 
 
 def _send_notification(farmer: dict, alert: dict) -> bool:
-    phone = _norm_phone(farmer.get("phone", ""))
-    if not phone:
-        return False
     body = f"[{alert['title']}] {alert['message']}"
     try:
-        return provider().send(phone, body)
+        prov = provider()
+        phone = _norm_phone(farmer.get("phone", ""))
+        if getattr(prov, "requires_phone", True) and not phone:
+            return False
+        return prov.send(phone, body)
     except Exception as e:
         logger.error(f"Alerts: delivery failed: {e}")
         return False
@@ -978,7 +1018,7 @@ async def generate_alerts(payload: GenerateRequest):
 
 @router.post("/alerts/send-test")
 async def send_test_alert(payload: TestSendRequest):
-    """Send a demo notification to any phone number (console log, CallMeBot or Twilio)."""
+    """Send a demo notification (console log, Telegram, CallMeBot, Fast2SMS or Twilio)."""
     msg = _tr(MESSAGES["test"], payload.language)
     ok = provider().send(_norm_phone(payload.phone), f"[Test] {msg}")
     return {"delivered": ok, "delivery_mode": provider().name, "phone": _norm_phone(payload.phone), "message": msg}
