@@ -44,3 +44,6 @@ coverage/
 # Cache
 .cache/
 *.cache
+
+# Runtime data (generated at startup)
+backend/data/alerts/

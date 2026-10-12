@@ -26,13 +26,13 @@
 │                                                                         │
 │  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐            │
 │  │   Frontend   │◄────│   Backend    │◄────│   ML Models  │            │
-│  │   (React)    │     │  (FastAPI)   │     │ (Python/TF)  │            │
+│  │   (React)    │     │  (FastAPI)   │     │ (Python/PyTorch)│          │
 │  └──────────────┘     └──────────────┘     └──────────────┘            │
 │        │                    │                    │                       │
 │        │                    │                    │                       │
-│   Tailwind CSS         Pydantic Models      RandomForest                 │
-│   Framer Motion        CropExplainability   Neural Networks             │
-│   Lucide Icons         OpenRouter API      WPI Price Models            │
+│   Tailwind CSS         Pydantic Models      Neural Network (crop)        │
+│   Framer Motion        CropExplainability   DecisionTree (price)         │
+│   Lucide Icons         OpenRouter API       WPI Price Models             │
 │   Axios HTTP           Uvicorn Server                                       │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -45,33 +45,37 @@
 ### **Frontend Stack**
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| **React** | UI Framework | 18.x |
-| **Vite** | Build Tool | 4.x |
-| **Tailwind CSS** | Styling | 3.x |
-| **Framer Motion** | Animations | 10.x |
-| **Lucide React** | Icons | 0.x |
+| **React** | UI Framework | 18.2 |
+| **Vite** | Build Tool | 5.4 |
+| **Tailwind CSS** | Styling | 3.4 |
+| **Framer Motion** | Animations | 11 |
+| **Lucide React** | Icons | 0.344 |
 | **Axios** | HTTP Client | 1.x |
+| **Recharts** | Charts | 2.12 |
+| **react-i18next / i18next** | Internationalization (10 languages) | 17 / 26 |
+| **react-router-dom** | Client-side routing | 7.18 |
 
 ### **Backend Stack**
 | Technology | Purpose | Version |
 |------------|---------|---------|
-| **FastAPI** | API Framework | 0.104.x |
-| **Uvicorn** | ASGI Server | 0.24.x |
-| **Pydantic** | Data Validation | 2.x |
-| **NumPy** | Numerical Computing | 1.24.x |
-| **Pandas** | Data Processing | 2.x |
-| **scikit-learn** | ML Algorithms | 1.3.x |
-| **TensorFlow** | Neural Networks | 2.x |
-| **joblib** | Model Serialization | 1.3.x |
-| **httpx** | Async HTTP Client | 0.x |
+| **FastAPI** | API Framework | ≥0.91 |
+| **Uvicorn** | ASGI Server | ≥0.20 |
+| **Pydantic** | Data Validation | ≥1.10 |
+| **NumPy** | Numerical Computing | ≥1.24 |
+| **Pandas** | Data Processing | ≥1.5 |
+| **PyTorch** | Neural Network (crop model) | ≥2.0 |
+| **scikit-learn** | DecisionTreeRegressor (price models) | ≥1.2 |
+| **SciPy** | Scientific Computing | ≥1.10 |
+| **httpx** | HTTP Client (weather, Twilio, Fast2SMS, OpenRouter) | ≥0.24 |
 
 ### **AI/ML Stack**
 | Technology | Purpose |
 |------------|---------|
-| **Random Forest** | Crop Classification |
-| **Neural Networks** | Price Prediction |
-| **OpenRouter API** | AI Chatbot (Mistral/Llama) |
+| **PyTorch Neural Network** (`Net_64_128_64`) | Crop Classification (41 crops) |
+| **DecisionTreeRegressor** | Price Prediction (23 WPI commodities, trained in-memory) |
+| **OpenRouter API** | AI Chatbot (LLM + rule-based fallback) |
 | **WPI Data Models** | Price Forecasting |
+| **Dependency-free SHAP** (`ShapExplainer`) | Explainable AI (no external `shap` package) |
 
 ### **Development Tools**
 | Tool | Purpose |
@@ -336,6 +340,25 @@ npm run dev
 4. **Market Integration**: Live mandi prices via Agmarknet
 5. **Image Recognition**: Pest/disease detection from photos
 6. **Multi-language**: Support for regional languages
+
+---
+
+## 🌍 Alignment with UN Sustainable Development Goals (SDGs)
+
+AgriSarathi AI directly supports several UN SDGs through data-driven, climate-aware
+advisory for smallholder farmers:
+
+| SDG | Target | How AgriSarathi contributes |
+|-----|--------|------------------------------|
+| **SDG 1 — No Poverty** | Income stability for smallholders | Better crop selection and price forecasting improve farm profitability and reduce crop-loss risk |
+| **SDG 2 — Zero Hunger** | Sustainable food production | Correct crop, fertilizer (NPK) and irrigation guidance raises yields |
+| **SDG 8 — Decent Work & Economic Growth** | Farmer incomes | WPI price prediction + profit calculator improve market/selling decisions |
+| **SDG 12 — Responsible Consumption & Production** | Efficient input use | Data-driven fertilizer quantities reduce overuse and waste |
+| **SDG 13 — Climate Action** | Climate-resilient agriculture | Temperature/rainfall-aware recommendations and weather alerts aid adaptation |
+
+**Indirect support:** SDG 3 (well-being via income security), SDG 5 (inclusion of women
+farmers), SDG 6 (water-conscious crop choice), SDG 9 (innovation), SDG 10 (reduced
+inequality for smallholders), SDG 15 (sustainable land use), SDG 17 (partnerships/data).
 
 ---
 
